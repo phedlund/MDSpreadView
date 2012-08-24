@@ -3,17 +3,20 @@
 //  MDSpreadViewDemo
 //
 //  Created by Dimitri Bouniol on 10/15/11.
-//  Copyright (c) 2011 Mochi Development, Inc. All rights reserved.
+//  Copyright (c) 2012 Mochi Development, Inc. All rights reserved.
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy
-//  of this software and associated documentation files (the "Software"), to deal
-//  in the Software without restriction, including without limitation the rights
-//  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//  copies of the Software, and to permit persons to whom the Software is
+//  of this software, associated artwork, and documentation files (the "Software"),
+//  to deal in the Software without restriction, including without limitation the
+//  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+//  sell copies of the Software, and to permit persons to whom the Software is
 //  furnished to do so, subject to the following conditions:
 //  
-//  The above copyright notice and this permission notice shall be included in
-//  all copies or substantial portions of the Software.
+//  1. The above copyright notice and this permission notice shall be included in
+//     all copies or substantial portions of the Software.
+//  2. Neither the name of Mochi Development, Inc. nor the names of its
+//     contributors or products may be used to endorse or promote products
+//     derived from this software without specific prior written permission.
 //  
 //  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 //  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -29,6 +32,7 @@
 //  
 
 #import "MDSpreadViewCell.h"
+#import "MDSpreadView.h"
 
 typedef enum {
     MDSpreadViewHeaderCellStyleCorner,
@@ -39,5 +43,10 @@ typedef enum {
 @interface MDSpreadViewHeaderCell : MDSpreadViewCell
 
 - (id)initWithStyle:(MDSpreadViewHeaderCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier;
+
+@property (nonatomic, retain) MDSortDescriptor *sortDescriptorPrototype;
+// This needs to be set if you want to support sorting for this column/row.
+@property (nonatomic) MDSpreadViewSortAxis defaultSortAxis;
+// Which direction will a orner header sort in?
 
 @end

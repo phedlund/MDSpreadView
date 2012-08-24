@@ -3,17 +3,20 @@
 //  MDSpreadViewDemo
 //
 //  Created by Dimitri Bouniol on 10/15/11.
-//  Copyright (c) 2011 Mochi Development, Inc. All rights reserved.
+//  Copyright (c) 2012 Mochi Development, Inc. All rights reserved.
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy
-//  of this software and associated documentation files (the "Software"), to deal
-//  in the Software without restriction, including without limitation the rights
-//  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//  copies of the Software, and to permit persons to whom the Software is
+//  of this software, associated artwork, and documentation files (the "Software"),
+//  to deal in the Software without restriction, including without limitation the
+//  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+//  sell copies of the Software, and to permit persons to whom the Software is
 //  furnished to do so, subject to the following conditions:
 //  
-//  The above copyright notice and this permission notice shall be included in
-//  all copies or substantial portions of the Software.
+//  1. The above copyright notice and this permission notice shall be included in
+//     all copies or substantial portions of the Software.
+//  2. Neither the name of Mochi Development, Inc. nor the names of its
+//     contributors or products may be used to endorse or promote products
+//     derived from this software without specific prior written permission.
 //  
 //  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 //  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -29,16 +32,85 @@
 //  
 
 #import "MDSpreadViewCell.h"
+#import "MDSpreadView.h"
+#import <UIKit/UIGestureRecognizerSubclass.h>
+
+@interface MDSpreadViewCellTapGestureRecognizer : UIGestureRecognizer {
+    CGPoint touchDown;
+}
+
+@end
+
+@implementation MDSpreadViewCellTapGestureRecognizer
+
+- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    [super touchesBegan:touches withEvent:event];
+    self.state = UIGestureRecognizerStateBegan;
+    touchDown = [[touches anyObject] locationInView:self.view.window];
+}
+
+- (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    [super touchesMoved:touches withEvent:event];
+    if (self.state == UIGestureRecognizerStateFailed) return;
+    CGPoint newPoint = [[touches anyObject] locationInView:self.view.window];
+    if (fabs(touchDown.x - newPoint.x) > 5 || fabs(touchDown.y - newPoint.y) > 5) {
+        self.state = UIGestureRecognizerStateFailed;
+        return;
+    }
+    self.state = UIGestureRecognizerStateChanged;
+}
+
+- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    [super touchesEnded:touches withEvent:event];
+    if (self.state == UIGestureRecognizerStateFailed) return;
+    self.state = UIGestureRecognizerStateRecognized;
+}
+
+- (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    [super touchesCancelled:touches withEvent:event];
+    self.state = UIGestureRecognizerStateCancelled;
+}
+
+- (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)preventingGestureRecognizer
+{
+    return YES;
+}
+
+- (BOOL)canPreventGestureRecognizer:(UIGestureRecognizer *)preventedGestureRecognizer
+{
+    return NO;
+}
+
+@end
 
 @interface MDSpreadViewCell ()
 
 @property (nonatomic, readwrite, copy) NSString *reuseIdentifier;
+@property (nonatomic, readwrite, assign) MDSpreadView *spreadView;
+@property (nonatomic, retain) MDSortDescriptor *sortDescriptorPrototype;
+@property (nonatomic) MDSpreadViewSortAxis defaultSortAxis;
+
+@property (nonatomic, readonly) UIGestureRecognizer *_tapGesture;
+@property (nonatomic, retain) MDIndexPath *_rowPath;
+@property (nonatomic, retain) MDIndexPath *_columnPath;
+
+@end
+
+@interface MDSpreadView ()
+
+- (BOOL)_touchesBeganInCell:(MDSpreadViewCell *)cell;
+- (void)_touchesEndedInCell:(MDSpreadViewCell *)cell;
+- (void)_touchesCancelledInCell:(MDSpreadViewCell *)cell;
 
 @end
 
 @implementation MDSpreadViewCell
 
-@synthesize backgroundView, highlighted, highlightedBackgroundView, reuseIdentifier, textLabel, detailTextLabel, style, objectValue, indexes, tapGesture;
+@synthesize backgroundView, highlighted, highlightedBackgroundView, reuseIdentifier, textLabel, detailTextLabel, style, objectValue, _tapGesture, spreadView, sortDescriptorPrototype, defaultSortAxis, _rowPath, _columnPath;
 
 - (id)initWithFrame:(CGRect)frame
 {
@@ -52,6 +124,7 @@
         self.opaque = YES;
         self.backgroundColor = [UIColor whiteColor];
         self.reuseIdentifier = aReuseIdentifier;
+        self.multipleTouchEnabled = YES;
 //        self.layer.shouldRasterize = YES;
 //        self.layer.rasterizationScale = [UIScreen mainScreen].scale;
         style = aStyle;
@@ -84,11 +157,44 @@
         self.detailTextLabel = label;
         [label release];
         
-        tapGesture = [[UITapGestureRecognizer alloc] init];
-        [self addGestureRecognizer:tapGesture];
-        [tapGesture release];
+        _tapGesture = [[MDSpreadViewCellTapGestureRecognizer alloc] init];
+        _tapGesture.cancelsTouchesInView = NO;
+        _tapGesture.delaysTouchesEnded = NO;
+        _tapGesture.delegate = self;
+        [_tapGesture addTarget:self action:@selector(_handleTap:)];
+        [self addGestureRecognizer:_tapGesture];
+        [_tapGesture release];
     }
     return self;
+}
+
+- (void)setReuseIdentifier:(NSString *)anIdentifier
+{
+    if (reuseIdentifier != anIdentifier) {
+        [anIdentifier retain];
+        [reuseIdentifier release];
+        reuseIdentifier = anIdentifier;
+        
+        _reuseHash = [reuseIdentifier hash];
+    }
+}
+
+- (void)_handleTap:(UIGestureRecognizer *)gesture
+{
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        _shouldCancelTouches = ![spreadView _touchesBeganInCell:self];
+    } else if (gesture.state == UIGestureRecognizerStateEnded) {
+        if (!_shouldCancelTouches)
+            [spreadView _touchesEndedInCell:self];
+        
+        _shouldCancelTouches = NO;
+    } else if (gesture.state == UIGestureRecognizerStateCancelled ||
+               gesture.state == UIGestureRecognizerStateFailed) {
+        if (!_shouldCancelTouches)
+            [spreadView _touchesCancelledInCell:self];
+        
+        _shouldCancelTouches = NO;
+    }
 }
 
 - (void)setBackgroundView:(UIView *)aBackgroundView
@@ -157,6 +263,7 @@
 - (void)prepareForReuse
 {
     self.highlighted = NO;
+    self.objectValue = nil;
     self.textLabel.text = nil;
     self.detailTextLabel.text = nil;
 }
@@ -168,19 +275,29 @@
 
 - (void)setHighlighted:(BOOL)isHighlighted animated:(BOOL)animated
 {
-    highlighted = isHighlighted;
-    
-    textLabel.opaque = !isHighlighted;
-    detailTextLabel.opaque = !isHighlighted;
-    if (highlighted) {
-        textLabel.backgroundColor = [UIColor clearColor];
-        detailTextLabel.backgroundColor = [UIColor clearColor];
-    } else {
-        textLabel.backgroundColor = [UIColor whiteColor];
-        detailTextLabel.backgroundColor = [UIColor whiteColor];
-    }
-    if (animated) {
-        [UIView animateWithDuration:0.2 animations:^{
+    if (highlighted != isHighlighted) {
+        highlighted = isHighlighted;
+        
+        textLabel.opaque = !isHighlighted;
+        detailTextLabel.opaque = !isHighlighted;
+        if (highlighted) {
+            textLabel.backgroundColor = [UIColor clearColor];
+            detailTextLabel.backgroundColor = [UIColor clearColor];
+        } else {
+            textLabel.backgroundColor = [UIColor whiteColor];
+            detailTextLabel.backgroundColor = [UIColor whiteColor];
+        }
+        if (animated) {
+            [UIView animateWithDuration:0.2 animations:^{
+                if (highlighted) {
+                    highlightedBackgroundView.alpha = 1;
+                } else {
+                    highlightedBackgroundView.alpha = 0;
+                }
+                textLabel.highlighted = highlighted;
+                detailTextLabel.highlighted = highlighted;
+            }];
+        } else {
             if (highlighted) {
                 highlightedBackgroundView.alpha = 1;
             } else {
@@ -188,15 +305,7 @@
             }
             textLabel.highlighted = highlighted;
             detailTextLabel.highlighted = highlighted;
-        }];
-    } else {
-        if (highlighted) {
-            highlightedBackgroundView.alpha = 1;
-        } else {
-            highlightedBackgroundView.alpha = 0;
         }
-        textLabel.highlighted = highlighted;
-        detailTextLabel.highlighted = highlighted;
     }
 }
 
@@ -207,20 +316,25 @@
 
 - (void)setObjectValue:(id)anObject
 {
-    [anObject retain];
-    [objectValue release];
-    objectValue = anObject;
+    if (anObject != objectValue) {
+        [anObject retain];
+        [objectValue release];
+        objectValue = anObject;
     
-    if ([objectValue isKindOfClass:[NSString class]]) {
-        self.textLabel.text = objectValue;
+        if ([objectValue respondsToSelector:@selector(description)]) {
+            self.textLabel.text = [objectValue description];
+        }
     }
 }
 
 - (void)dealloc
 {
+    [sortDescriptorPrototype release];
+    spreadView = nil;
     [objectValue release];
     [backgroundView release];
-	[indexes release];
+	[_rowPath release];
+    [_columnPath release];
     [highlightedBackgroundView release];
     [textLabel release];
     [reuseIdentifier release];
