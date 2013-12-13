@@ -139,7 +139,7 @@
             [imageView release];
             
             UIView *view = [[UIView alloc] init];
-            view.backgroundColor = [UIColor colorWithWhite:217./255. alpha:1.];
+            view.backgroundColor = [UIColor colorWithRed:0.92f green:0.94f blue:0.97f alpha:1.0f]; //[UIColor colorWithWhite:217./255. alpha:1.];
             self.highlightedBackgroundView = view;
             [view release];
             
