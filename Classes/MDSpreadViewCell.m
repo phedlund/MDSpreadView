@@ -87,12 +87,17 @@
 
 @end
 
-@interface MDSpreadViewCell ()
+@interface MDSpreadViewCell () {
+    UIView *_originalSelectedBackground;
+}
 
 @property (nonatomic, readwrite, copy) NSString *reuseIdentifier;
-@property (nonatomic, readwrite, assign) MDSpreadView *spreadView;
+@property (nonatomic, readwrite, weak) MDSpreadView *spreadView;
 @property (nonatomic, retain) MDSortDescriptor *sortDescriptorPrototype;
 @property (nonatomic) MDSpreadViewSortAxis defaultSortAxis;
+@property (nonatomic) MDSpreadViewCellSortIndicator _sortIndicator;
+@property (nonatomic) MDSpreadViewSortAxis _sortAxis;
+- (void)_setSortIndicator:(MDSpreadViewCellSortIndicator)_sortIndicator sortAxis:(MDSpreadViewSortAxis)_sortAxis;
 
 @property (nonatomic, readonly) UIGestureRecognizer *_tapGesture;
 @property (nonatomic, retain) MDIndexPath *_rowPath;
@@ -106,19 +111,20 @@
 - (BOOL)_touchesBeganInCell:(MDSpreadViewCell *)cell;
 - (void)_touchesEndedInCell:(MDSpreadViewCell *)cell;
 - (void)_touchesCancelledInCell:(MDSpreadViewCell *)cell;
+- (UIImage *)_separatorImage;
 
 @end
 
 @implementation MDSpreadViewCell
 
-@synthesize backgroundView, highlighted, highlightedBackgroundView, reuseIdentifier, textLabel, detailTextLabel, style, objectValue, _tapGesture, spreadView, sortDescriptorPrototype, defaultSortAxis, _rowPath, _columnPath, _pureFrame;
+@synthesize backgroundView, highlighted, highlightedBackgroundView, reuseIdentifier, textLabel, detailTextLabel, style, objectValue, _tapGesture, spreadView, _rowPath, _columnPath, _pureFrame;
 
-- (id)initWithFrame:(CGRect)frame
+- (instancetype)initWithFrame:(CGRect)frame
 {
     return [self initWithStyle:MDSpreadViewCellStyleDefault reuseIdentifier:@"_MDDefaultCell"];
 }
 
-- (id)initWithStyle:(MDSpreadViewCellStyle)aStyle reuseIdentifier:(NSString *)aReuseIdentifier
+- (instancetype)initWithStyle:(MDSpreadViewCellStyle)aStyle reuseIdentifier:(NSString *)aReuseIdentifier
 {
     if (!aReuseIdentifier) return nil;
     if (self = [super initWithFrame:CGRectZero]) {
@@ -129,19 +135,21 @@
         //        self.layer.shouldRasterize = YES;
         //        self.layer.rasterizationScale = [UIScreen mainScreen].scale;
         style = aStyle;
+        _selectionStyle = MDSpreadViewCellSelectionStyleDefault;
         
-        if ([UIMotionEffect class]) {
+        if (NSClassFromString(@"UIMotionEffect")) {
             
-            UIImageView *imageView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"MDSpreadViewCell.png"]];
-            imageView.contentMode = UIViewContentModeScaleToFill;
-            imageView.contentStretch = CGRectMake(2./imageView.frame.size.width, 2./imageView.frame.size.height, 1./imageView.frame.size.width, 1./imageView.frame.size.height);
-            self.backgroundView = imageView;
-            [imageView release];
+//            UIImageView *imageView = [[UIImageView alloc] initWithImage:[[UIImage imageNamed:@"MDSpreadViewCell.png"] resizableImageWithCapInsets:UIEdgeInsetsMake(2, 2, 2, 2)]];
+//            self.backgroundView = imageView;
             
             UIView *view = [[UIView alloc] init];
             view.backgroundColor = [UIColor colorWithRed:0.92f green:0.94f blue:0.97f alpha:1.0f]; //[UIColor colorWithWhite:217./255. alpha:1.];
             self.highlightedBackgroundView = view;
-            [view release];
+            
+            UIView *selectedView = [[UIView alloc] init];
+            _originalSelectedBackground = selectedView;
+            selectedView.backgroundColor = [self.tintColor colorWithAlphaComponent:0.15];
+            self.selectedBackgroundView = selectedView;
             
             UILabel *label = [[UILabel alloc] init];
             label.opaque = YES;
@@ -149,7 +157,6 @@
             label.font = [UIFont systemFontOfSize:16];
             label.highlightedTextColor = [UIColor blackColor];
             self.textLabel = label;
-            [label release];
             
             label = [[UILabel alloc] init];
             label.opaque = YES;
@@ -157,19 +164,12 @@
             label.font = [UIFont systemFontOfSize:16];
             label.highlightedTextColor = [UIColor blackColor];
             self.detailTextLabel = label;
-            [label release];
         } else {
-            UIImageView *imageView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"MDSpreadViewCell.png"]];
-            imageView.contentMode = UIViewContentModeScaleToFill;
-            imageView.contentStretch = CGRectMake(2./imageView.frame.size.width, 2./imageView.frame.size.height, 1./imageView.frame.size.width, 1./imageView.frame.size.height);
+            UIImageView *imageView = [[UIImageView alloc] initWithImage:[[UIImage imageNamed:@"MDSpreadViewCell.png"] resizableImageWithCapInsets:UIEdgeInsetsMake(2, 2, 2, 2)]];
             self.backgroundView = imageView;
-            [imageView release];
             
-            imageView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"MDSpreadViewCellSelected.png"]];
-            imageView.contentMode = UIViewContentModeScaleToFill;
-            imageView.contentStretch = CGRectMake(2./imageView.frame.size.width, 2./imageView.frame.size.height, 1./imageView.frame.size.width, 1./imageView.frame.size.height);
+            imageView = [[UIImageView alloc] initWithImage:[[UIImage imageNamed:@"MDSpreadViewCellSelected.png"] resizableImageWithCapInsets:UIEdgeInsetsMake(2, 2, 2, 2)]];
             self.highlightedBackgroundView = imageView;
-            [imageView release];
             
             UILabel *label = [[UILabel alloc] init];
             label.opaque = YES;
@@ -177,7 +177,6 @@
             label.font = [UIFont boldSystemFontOfSize:18];
             label.highlightedTextColor = [UIColor blackColor];
             self.textLabel = label;
-            [label release];
             
             label = [[UILabel alloc] init];
             label.opaque = YES;
@@ -185,7 +184,11 @@
             label.font = [UIFont boldSystemFontOfSize:18];
             label.highlightedTextColor = [UIColor blackColor];
             self.detailTextLabel = label;
-            [label release];
+        }
+        
+        if ([self hasSeparators]) {
+            separators = [[UIImageView alloc] initWithFrame:self.bounds];
+            [self addSubview:separators];
         }
         
         _tapGesture = [[MDSpreadViewCellTapGestureRecognizer alloc] init];
@@ -194,16 +197,35 @@
         _tapGesture.delegate = self;
         [_tapGesture addTarget:self action:@selector(_handleTap:)];
         [self addGestureRecognizer:_tapGesture];
-        [_tapGesture release];
     }
     return self;
+}
+
+- (void)dealloc {
+    [self removeGestureRecognizer: _tapGesture];
+    _tapGesture.delegate = nil;
+}
+
+- (void)setSpreadView:(MDSpreadView *)aSpreadView
+{
+    spreadView = aSpreadView;
+    
+    separators.image = [spreadView _separatorImage];
+}
+
+- (void)_updateSeparators
+{
+    separators.image = [spreadView _separatorImage];
+}
+
+- (BOOL)hasSeparators
+{
+    return YES;
 }
 
 - (void)setReuseIdentifier:(NSString *)anIdentifier
 {
     if (reuseIdentifier != anIdentifier) {
-        [anIdentifier retain];
-        [reuseIdentifier release];
         reuseIdentifier = anIdentifier;
         
         _reuseHash = [reuseIdentifier hash];
@@ -228,11 +250,26 @@
     }
 }
 
+#pragma mark - Sorting
+
+- (void)_setSortIndicator:(MDSpreadViewCellSortIndicator)_sortIndicator sortAxis:(MDSpreadViewSortAxis)_sortAxis;
+{
+    self._sortIndicator = _sortIndicator;
+    self._sortAxis = _sortAxis;
+    
+    [self updateSortIndicator:__sortIndicator sortAxis:__sortAxis];
+}
+
+- (void)updateSortIndicator:(MDSpreadViewCellSortIndicator)sortIndicator sortAxis:(MDSpreadViewSortAxis)sortAxis
+{
+    
+}
+
+#pragma mark - Background Views
+
 - (void)setBackgroundView:(UIView *)aBackgroundView
 {
     [backgroundView removeFromSuperview];
-    [aBackgroundView retain];
-    [backgroundView release];
     backgroundView = aBackgroundView;
     
     [self insertSubview:backgroundView atIndex:0];
@@ -242,24 +279,65 @@
 - (void)setHighlightedBackgroundView:(UIView *)aHighlightedBackgroundView
 {
     [highlightedBackgroundView removeFromSuperview];
-    [aHighlightedBackgroundView retain];
-    [highlightedBackgroundView release];
     highlightedBackgroundView = aHighlightedBackgroundView;
     
     if (highlighted) {
         highlightedBackgroundView.alpha = 1;
+        highlightedBackgroundView.hidden = NO;
     } else {
         highlightedBackgroundView.alpha = 0;
+        highlightedBackgroundView.hidden = YES;
     }
-    [self insertSubview:highlightedBackgroundView aboveSubview:self.backgroundView];
+    
+    if (_selectedBackgroundView) {
+        [self insertSubview:highlightedBackgroundView aboveSubview:_selectedBackgroundView];
+    } else if (backgroundView) {
+        [self insertSubview:highlightedBackgroundView aboveSubview:backgroundView];
+    } else {
+        [self insertSubview:highlightedBackgroundView atIndex:0];
+    }
+    
     [self setNeedsLayout];
 }
+
+- (void)setSelectedBackgroundView:(UIView *)selectedBackgroundView
+{
+    [_selectedBackgroundView removeFromSuperview];
+    _selectedBackgroundView = selectedBackgroundView;
+    
+    if (_originalSelectedBackground != selectedBackgroundView) {
+        _originalSelectedBackground = nil;
+    }
+    
+    if (_selected) {
+        _selectedBackgroundView.alpha = 1;
+        _selectedBackgroundView.hidden = NO;
+    } else {
+        _selectedBackgroundView.alpha = 0;
+        _selectedBackgroundView.hidden = YES;
+    }
+    
+    if (backgroundView) {
+        [self insertSubview:_selectedBackgroundView aboveSubview:backgroundView];
+    } else {
+        [self insertSubview:_selectedBackgroundView atIndex:0];
+    }
+    
+    [self setNeedsLayout];
+}
+
+- (void)tintColorDidChange
+{
+    [super tintColorDidChange];
+    
+    _originalSelectedBackground.backgroundColor = [self.tintColor colorWithAlphaComponent:0.15];
+}
+
+#pragma mark - Content Views
 
 - (void)setTextLabel:(UILabel *)aTextLabel
 {
     [textLabel removeFromSuperview];
-    [aTextLabel retain];
-    [textLabel release];
     textLabel = aTextLabel;
     
     textLabel.highlighted = highlighted;
@@ -270,8 +348,6 @@
 - (void)setDetailTextLabel:(UILabel *)aTextLabel
 {
     [detailTextLabel removeFromSuperview];
-    [aTextLabel retain];
-    [detailTextLabel release];
     detailTextLabel = aTextLabel;
     
     detailTextLabel.highlighted = highlighted;
@@ -281,19 +357,31 @@
 
 - (void)layoutSubviews
 {
-    backgroundView.frame = self.bounds;
-    highlightedBackgroundView.frame = self.bounds;
-    textLabel.frame = CGRectMake(10, 2, self.bounds.size.width-20, self.bounds.size.height-3);
-}
-
-- (void)setHighlighted:(BOOL)isHighlighted
-{
-    [self setHighlighted:isHighlighted animated:NO];
+    CGRect bounds = self.bounds;
+    
+    backgroundView.frame = bounds;
+    highlightedBackgroundView.frame = bounds;
+    _selectedBackgroundView.frame = bounds;
+    separators.frame = bounds;
+    
+    CGRect textLabelFrame = CGRectMake(10, 2, bounds.size.width-20, bounds.size.height-3);
+    if (bounds.size.width < 20) {
+        textLabelFrame.origin.x = 0;
+        textLabelFrame.size.width = bounds.size.width;
+    }
+    if (bounds.size.height < 3) {
+        textLabelFrame.origin.y = 0;
+        textLabelFrame.size.height = bounds.size.height;
+    }
+    textLabel.frame = textLabelFrame;
 }
 
 - (void)prepareForReuse
 {
     self.highlighted = NO;
+    self.selected = NO;
+    self.sortDescriptorPrototype = nil;
+    self._sortIndicator = MDSpreadViewCellSortIndicatorNone;
 //    self.objectValue = nil;
 //    self.textLabel.text = nil;
 //    self.detailTextLabel.text = nil;
@@ -305,52 +393,183 @@
         [super setFrame:frame];
 }
 
+- (void)set_pureFrame:(CGRect)pureFrame
+{
+    _pureFrame = pureFrame;
+    self.frame = _pureFrame;
+}
+
+- (void)setBackgroundColor:(UIColor *)backgroundColor
+{
+    [super setBackgroundColor:backgroundColor];
+    
+    if (!backgroundView && (!(highlighted || _selected) || _selectionStyle == MDSpreadViewCellSelectionStyleNone)) {
+        textLabel.opaque = (self.backgroundColor && self.backgroundColor != [UIColor clearColor]);
+        detailTextLabel.opaque = (self.backgroundColor && self.backgroundColor != [UIColor clearColor]);
+        
+        textLabel.backgroundColor = self.backgroundColor;
+        detailTextLabel.backgroundColor = self.backgroundColor;
+    } else {
+        textLabel.opaque = NO;
+        detailTextLabel.opaque = NO;
+        
+        textLabel.backgroundColor = [UIColor clearColor];
+        detailTextLabel.backgroundColor = [UIColor clearColor];
+    }
+}
+
+#pragma mark - State
+
+- (void)setHighlighted:(BOOL)isHighlighted
+{
+    [self setHighlighted:isHighlighted animated:NO];
+}
+
 - (void)setHighlighted:(BOOL)isHighlighted animated:(BOOL)animated
 {
     if (highlighted != isHighlighted) {
         highlighted = isHighlighted;
         
-        textLabel.opaque = !isHighlighted;
-        detailTextLabel.opaque = !isHighlighted;
-        if (highlighted) {
+        void (^animations)(void) = NULL;
+        
+        if (highlighted && _selectionStyle > MDSpreadViewCellSelectionStyleNone) {
+            highlightedBackgroundView.hidden = NO;
+            
+            animations = ^() {
+                highlightedBackgroundView.alpha = 1;
+                textLabel.highlighted = YES;
+                detailTextLabel.highlighted = YES;
+                [self layoutIfNeeded];
+            };
+        } else {
+            animations = ^() {
+                highlightedBackgroundView.alpha = 0;
+                textLabel.highlighted = NO;
+                detailTextLabel.highlighted = NO;
+                [self layoutIfNeeded];
+            };
+        }
+        
+        void (^completion)(BOOL) = NULL;
+        
+        if ((highlighted || _selected) && _selectionStyle > MDSpreadViewCellSelectionStyleNone) {
+            textLabel.opaque = NO;
+            detailTextLabel.opaque = NO;
+            
             textLabel.backgroundColor = [UIColor clearColor];
             detailTextLabel.backgroundColor = [UIColor clearColor];
-        } else {
-            textLabel.backgroundColor = [UIColor whiteColor];
-            detailTextLabel.backgroundColor = [UIColor whiteColor];
-        }
-        if (animated) {
-            [UIView animateWithDuration:0.2 animations:^{
-                if (highlighted) {
-                    highlightedBackgroundView.alpha = 1;
-                } else {
-                    highlightedBackgroundView.alpha = 0;
+            
+            completion = ^(BOOL finished) {
+                if (!highlighted || _selectionStyle == MDSpreadViewCellSelectionStyleNone) {
+                    highlightedBackgroundView.hidden = YES;
                 }
-                textLabel.highlighted = highlighted;
-                detailTextLabel.highlighted = highlighted;
-            }];
+            };
         } else {
-            if (highlighted) {
-                highlightedBackgroundView.alpha = 1;
-            } else {
-                highlightedBackgroundView.alpha = 0;
-            }
-            textLabel.highlighted = highlighted;
-            detailTextLabel.highlighted = highlighted;
+            completion = ^(BOOL finished) {
+                if (finished && !backgroundView && (!(highlighted || _selected) || _selectionStyle == MDSpreadViewCellSelectionStyleNone)) {
+                    textLabel.opaque = (self.backgroundColor && self.backgroundColor != [UIColor clearColor]);
+                    detailTextLabel.opaque = (self.backgroundColor && self.backgroundColor != [UIColor clearColor]);
+                    
+                    textLabel.backgroundColor = self.backgroundColor;
+                    detailTextLabel.backgroundColor = self.backgroundColor;
+                }
+            };
+        }
+        
+        if (animated) {
+            [UIView animateWithDuration:0.2 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:animations completion:completion];
+        } else {
+            animations();
         }
     }
 }
 
-- (id)objectValue
+- (void)setSelected:(BOOL)selected
 {
-    return self.textLabel.text;
+    [self setSelected:selected animated:NO];
 }
+
+- (void)setSelected:(BOOL)isSelected animated:(BOOL)animated
+{
+    if (_selected != isSelected) {
+        _selected = isSelected;
+        
+        void (^animations)(void) = NULL;
+        
+        if (_selected && _selectionStyle > MDSpreadViewCellSelectionStyleNone) {
+            _selectedBackgroundView.hidden = NO;
+            
+            animations = ^() {
+                _selectedBackgroundView.alpha = 1;
+                [self layoutIfNeeded];
+            };
+        } else {
+            animations = ^() {
+                _selectedBackgroundView.alpha = 0;
+                [self layoutIfNeeded];
+            };
+        }
+        
+        void (^completion)(BOOL) = NULL;
+        
+        if ((highlighted || _selected) && _selectionStyle > MDSpreadViewCellSelectionStyleNone) {
+            textLabel.opaque = NO;
+            detailTextLabel.opaque = NO;
+            
+            textLabel.backgroundColor = [UIColor clearColor];
+            detailTextLabel.backgroundColor = [UIColor clearColor];
+            
+            completion = ^(BOOL finished) {
+                if (!_selected || _selectionStyle == MDSpreadViewCellSelectionStyleNone) {
+                    _selectedBackgroundView.hidden = YES;
+                }
+            };
+        } else {
+            completion = ^(BOOL finished) {
+                if (finished && !backgroundView && (!(highlighted || _selected) || _selectionStyle == MDSpreadViewCellSelectionStyleNone)) {
+                    textLabel.opaque = (self.backgroundColor && self.backgroundColor != [UIColor clearColor]);
+                    detailTextLabel.opaque = (self.backgroundColor && self.backgroundColor != [UIColor clearColor]);
+                    
+                    textLabel.backgroundColor = self.backgroundColor;
+                    detailTextLabel.backgroundColor = self.backgroundColor;
+                }
+                
+                if (!_selected || _selectionStyle == MDSpreadViewCellSelectionStyleNone) {
+                    _selectedBackgroundView.hidden = YES;
+                }
+            };
+        }
+        
+        if (animated) {
+            [UIView animateWithDuration:0.2 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:animations completion:completion];
+        } else {
+            animations();
+        }
+        
+        [self updateSortIndicator:__sortIndicator sortAxis:__sortAxis];
+    }
+}
+
+- (void)setSelectionStyle:(MDSpreadViewCellSelectionStyle)selectionStyle
+{
+    if (_selectionStyle != selectionStyle) {
+        _selectionStyle = selectionStyle;
+        
+        if (_selected && _selectionStyle > MDSpreadViewCellSelectionStyleNone) {
+            _selectedBackgroundView.alpha = 1;
+            _selectedBackgroundView.hidden = NO;
+        } else {
+            _selectedBackgroundView.alpha = 0;
+            _selectedBackgroundView.hidden = YES;
+        }
+    }
+}
+
+#pragma mark - Value
 
 - (void)setObjectValue:(id)anObject
 {
     if (anObject != objectValue) {
-        [anObject retain];
-        [objectValue release];
         objectValue = anObject;
     
         if ([objectValue respondsToSelector:@selector(description)]) {
@@ -359,25 +578,7 @@
     }
 }
 
-- (void)set_pureFrame:(CGRect)pureFrame
-{
-    _pureFrame = pureFrame;
-    self.frame = _pureFrame;
-}
-
-- (void)dealloc
-{
-    [sortDescriptorPrototype release];
-    spreadView = nil;
-    [objectValue release];
-    [backgroundView release];
-	[_rowPath release];
-    [_columnPath release];
-    [highlightedBackgroundView release];
-    [textLabel release];
-    [reuseIdentifier release];
-    [super dealloc];
-}
+#pragma mark - Accessibility
 
 - (BOOL)isAccessibilityElement
 {
