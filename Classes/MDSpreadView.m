@@ -482,7 +482,7 @@ static CGFloat MDPixel()
 
 - (BOOL)isEqualToIndexPath:(MDIndexPath *)object
 {
-    if (object == nil) return nil;
+    if (object == nil) return NO;
     return (object->section == self->section && object->row == self->row);
 }
 
